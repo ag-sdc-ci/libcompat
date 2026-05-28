@@ -36,11 +36,13 @@ jobs:
 
     steps:
       - name: Clone repository
-        run: |
-          git init
-          git remote add origin ${{ env.REPO_URL }}
-          git fetch --depth 1 origin ${{ env.REPO_REF }}
-          git checkout FETCH_HEAD
+        uses: actions/checkout@v4
+        with:
+          repository: Android-Generic/external_libcompat
+          ref: master
+          token: ${{ github.token }}
+          path: .
+          persist-credentials: false
 
       - name: Set up toolchain
         run: |
