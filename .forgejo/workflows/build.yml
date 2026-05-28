@@ -1,0 +1,128 @@
+name: Build libcompat
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["devel"]
+  workflow_dispatch:
+
+env:
+  TARGET: x86_64-linux-android
+  REPO_URL: http://10.249.0.1:3002/Android-Generic/external_libcompat
+  REPO_REF: master
+
+jobs:
+  build:
+    runs-on: node
+    container:
+      image: ghcr.io/shadichy/cachyos-android-ci:latest
+    strategy:
+      fail-fast: true
+      matrix:
+        api-level: [32, 33, 34, 35]
+        ndk: [/opt/android-ndk]
+        x86-64-level: [v2, v3, v4]
+        include:
+          - api-level: 36
+            ndk: /opt/android-ndk-beta
+            x86-64-level: v2
+          - api-level: 36
+            ndk: /opt/android-ndk-beta
+            x86-64-level: v3
+          - api-level: 36
+            ndk: /opt/android-ndk-beta
+            x86-64-level: v4
+
+    steps:
+      - name: Clone repository
+        run: |
+          git init
+          git remote add origin ${{ env.REPO_URL }}
+          git fetch --depth 1 origin ${{ env.REPO_REF }}
+          git checkout FETCH_HEAD
+
+      - name: Set up toolchain
+        run: |
+          export TOOLCHAIN="${{ matrix.ndk }}/toolchains/llvm/prebuilt/linux-x86_64"
+          export API=${{ matrix.api-level }}
+
+          case "${{ matrix.x86-64-level }}" in
+            v2) ARCH_FLAGS="-march=x86-64-v2 -mtune=generic" ;;
+            v3) ARCH_FLAGS="-march=x86-64-v3 -mtune=generic -mavx -mavx2 -mf16c -mfma -mbmi -mbmi2 -mlzcnt" ;;
+            v4) ARCH_FLAGS="-march=x86-64-v4 -mtune=generic -mavx512f -mavx512bw -mavx512cd -mavx512dq -mavx512vl" ;;
+          esac
+
+          COMMON_FLAGS="-O2 -fPIC -DANDROID -D__ANDROID_API__=${API} -ffunction-sections -fdata-sections ${ARCH_FLAGS}"
+
+          echo "CC=${TOOLCHAIN}/bin/${{ env.TARGET }}${API}-clang" >> "$GITHUB_ENV"
+          echo "CXX=${TOOLCHAIN}/bin/${{ env.TARGET }}${API}-clang++" >> "$GITHUB_ENV"
+          echo "AR=${TOOLCHAIN}/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "NM=${TOOLCHAIN}/bin/llvm-nm" >> "$GITHUB_ENV"
+          echo "RANLIB=${TOOLCHAIN}/bin/llvm-ranlib" >> "$GITHUB_ENV"
+          echo "STRIP=${TOOLCHAIN}/bin/llvm-strip" >> "$GITHUB_ENV"
+          echo "CFLAGS=${COMMON_FLAGS}" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=${COMMON_FLAGS}" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-Wl,--gc-sections" >> "$GITHUB_ENV"
+
+      - name: Configure and Build
+        run: |
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=${{ matrix.ndk }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=x86_64 \
+            -DANDROID_PLATFORM=android-${{ matrix.api-level }} \
+            -DCMAKE_INSTALL_PREFIX=/vendor
+          make -j$(nproc)
+
+      - name: Install & package artifacts
+        run: |
+          cd build
+          DESTDIR="$(pwd)/output" make install
+          TARBALL="libcompat-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz"
+          tar -cf - -C output/vendor . | pigz -9 > "../${TARBALL}"
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.TARBALL }}
+          path: ${{ env.TARBALL }}
+
+  release:
+    needs: build
+    runs-on: node
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: tmp_artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p dist/release
+          find tmp_artifacts -type f -exec cp -t dist/release {} +
+          rm -rf tmp_artifacts
+
+      - name: Set release metadata
+        run: |
+          echo "RELEASE_DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
+          if [ "${{ github.ref_name }}" != "master" ]; then
+            echo "PRERELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
+          echo "RELEASE_NOTES=Built from android-generic/external_libcompat at main" >> "$GITHUB_ENV"
+
+      - name: Release
+        uses: actions/forgejo-release@v2.11.1
+        with:
+          direction: upload
+          release-dir: dist/release
+          tag: ${{ env.RELEASE_DATE }}
+          title: ${{ env.RELEASE_DATE }}
+          prerelease: ${{ env.PRERELEASE }}
+          release-notes: ${{ env.RELEASE_NOTES }}
+          override: true
