@@ -64,11 +64,11 @@ jobs:
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "REVISION=$REVISION" >> "$GITHUB_ENV"
-          
+
           # Export to job output
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
-    
+
   build:
     needs: setup
     runs-on: ubuntu-latest
@@ -148,9 +148,6 @@ jobs:
           sed -i "s/^pkgrel=.*/pkgrel=${{ needs.setup.outputs.revision }}/" APEXBUILD
 
           export PATH=$PATH:$(pwd)/makeapex/src
-          pwd
-          ls
-          find
           makeapex.sh
 
           # Rename output apex files to uniquely identify them for upload
