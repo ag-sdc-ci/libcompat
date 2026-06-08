@@ -108,6 +108,7 @@ jobs:
         with:
           repository: ag-sdc/makeapex
           ref: main
+          path: makeapex
 
       - name: Checkout platform
         uses: actions/checkout@v6
