@@ -145,7 +145,7 @@ jobs:
           GITHUB_REPOSITORY="${{ github.repository }}"
           for apex in *.apex; do
             basename=${GITHUB_REPOSITORY#*/}
-            case "$apex" in *-headers-*.apex) basename=$basename-headers ;; esac
+            case "$apex" in *-dev-*.apex) basename=$basename-dev ;; esac
             mv "$apex" "${basename}-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.apex"
           done
 
