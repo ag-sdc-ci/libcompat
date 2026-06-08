@@ -23,7 +23,7 @@ jobs:
           VERSION=$(curl -L https://github.com/ag-sdc/libcompat/raw/refs/heads/main/VERSION)
 
           version_cmp() {
-            local a=${1#v} b=${2#v}
+            local a=${1#*v} b=${2#*v}
             a=${a%-*}.
             b=${b%-*}.
             while [ "$a" ] && [ "$b" ]; do
@@ -46,11 +46,20 @@ jobs:
               return
             fi
 
-            TAG_REV=${LATEST_TAG#*-}
+            TAG_REV=${LATEST_TAG##*-}
             if [ ! "$TAG_REV" ]; then
               export REVISION=1
               return
             fi
+
+            case "$LATEST_TAG" in
+            dev-*) case "${{ github.ref_name }}" in
+              main|master) 
+                export REVISION=$TAG_REV
+                return
+                ;;
+            esac ;;
+            esac
             
             export REVISION=$((TAG_REV + 1))
           }
@@ -150,7 +159,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: libcompat-apex-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz
+          name: libcompat-apex-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}
           path: ./*.apex
           archive: false
 
@@ -185,7 +194,7 @@ jobs:
              [ '${{ github.ref }}' = 'refs/heads/devel' ] || \
              [ '${{ github.ref }}' = 'refs/heads/develop' ]; then
             IS_PRERELEASE=true
-            TAG=${TAG}-dev
+            TAG=dev-${TAG}
           fi
 
           echo "release_date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
