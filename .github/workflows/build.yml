@@ -101,7 +101,7 @@ jobs:
           done
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libcompat-apex-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz
           path: ./*.apex
@@ -109,7 +109,9 @@ jobs:
 
   release:
     needs: build_apex
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: >
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/devel' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -124,7 +126,7 @@ jobs:
           persist-credentials: false
 
       - name: Fetch APEX Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: ./tmp_artifacts/
 
@@ -142,17 +144,23 @@ jobs:
             | jq -r 'if type=="array" then length else 0 end')
           RELEASE_INDEX=$((EXISTING_COUNT + 1))
 
-          if [ '${{ github.event.inputs.is_prerelease }}' = 'true' ]; then
+          IS_PRERELEASE=false
+          if [ '${{ github.event.inputs.is_prerelease }}' = 'true' ] || \
+             [ '${{ github.ref }}' = 'refs/heads/dev' ] || \
+             [ '${{ github.ref }}' = 'refs/heads/devel' ] || \
+             [ '${{ github.ref }}' = 'refs/heads/develop' ]; then
+            IS_PRERELEASE=true
             BASE_TAG=${BASE_TAG}-dev
           fi
 
           echo "RELEASE_DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
           echo "TAG_VERSION=${BASE_TAG}-${RELEASE_INDEX}" >> "$GITHUB_ENV"
+          echo "IS_PRERELEASE=${IS_PRERELEASE}" >> "$GITHUB_ENV"
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_VERSION }}
           name: Release ver ${{ env.RELEASE_DATE }}
-          prerelease: ${{ github.event.inputs.is_prerelease == 'true' }}
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
           files: released-files/*
