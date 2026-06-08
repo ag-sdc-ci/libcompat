@@ -26,22 +26,26 @@ prepare() {
 		-DANDROID_ABI="x86_64" \
 		-DANDROID_PLATFORM="android-${API}" \
 		-DCMAKE_INSTALL_PREFIX="/apex/$org.$pkgname"
+	echo "dbg: NDK=$NDK"
+	echo "dbg: API=$API"
+	echo "dbg: LEVEL=$LEVEL"
 }
 
 build() {
 	cd "$srcdir/libcompat"
 	make -j"$(nproc)"
+	mkdir -p out
 }
 
 package_libcompat() {
 	cd "$srcdir/libcompat"
-	make DESTDIR=. install_lib
+	make DESTDIR=out install_lib
 	find .
-	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
+	cp -a "$srcdir/out/apex/$org.$pkgname"/. "$pkgdir/"
 }
 
 package_libcompat-headers() {
 	cd "$srcdir/libcompat"
-	make DESTDIR=. install_headers
-	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
+	make DESTDIR=out install_headers
+	cp -a "$srcdir/out/apex/$org.$pkgname"/. "$pkgdir/"
 }
