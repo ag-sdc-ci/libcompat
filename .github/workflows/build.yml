@@ -147,8 +147,9 @@ jobs:
           mv src/APEXBUILD .
           sed -i "s/^pkgrel=.*/pkgrel=${{ needs.setup.outputs.revision }}/" APEXBUILD
 
+          chown -R user:user .
           export PATH=$PATH:$(pwd)/makeapex/src
-          makeapex.sh
+          su -m user -c makeapex.sh
 
           # Rename output apex files to uniquely identify them for upload
           GITHUB_REPOSITORY="${{ github.repository }}"
