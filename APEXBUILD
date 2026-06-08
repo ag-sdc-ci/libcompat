@@ -15,12 +15,13 @@ split_packages=("${pkgname}" "${pkgname}-headers")
 source=()
 md5sums=()
 
-pkgver() {
-	cat "$srcdir/VERSION"
-}
+# pkgver() {
+# 	cat "$srcdir/VERSION"
+# }
 
 prepare() {
 	cd "$srcdir"
+	find
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
 		-DANDROID_ABI="x86_64" \
