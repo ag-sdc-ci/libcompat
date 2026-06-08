@@ -17,14 +17,14 @@ on:
 
 jobs:
   setup:
-    runs-on: node
+    runs-on: ubuntu-latest
     steps:
       - name: Calculate Release Sequence Count
         id: counter
         run: |
           BASE_TAG="${{ github.event.inputs.version_tag }}"
-          EXISTING_COUNT=$(curl -s -H "Authorization: token ${{ github.token }}" \
-            "${{ forgejo.server_url }}/api/v1/repos/${{ github.repository }}/releases" \
+          EXISTING_COUNT=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
             | jq --arg prefix "$BASE_TAG" '[.[] | select(.tag_name | startswith($prefix))] | length')
 
           RELEASE_INDEX=$((EXISTING_COUNT + 1))
@@ -39,7 +39,7 @@ jobs:
           echo "Calculated Version: $VERSION_STRING"
 
   build_apex:
-    runs-on: node
+    runs-on: ubuntu-latest
     container:
       image: ghcr.io/shadichy/cachyos-android-ci:latest
     strategy:
@@ -108,7 +108,7 @@ jobs:
 
   release:
     needs: build_apex
-    runs-on: node
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -128,11 +128,9 @@ jobs:
           echo "RELEASE_DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
 
       - name: Release
-        uses: actions/forgejo-release@v2.11.1
+        uses: softprops/action-gh-release@v2
         with:
-          direction: upload
-          release-dir: released-files
-          tag: ${{ env.TAG_VERSION }}
-          title: Release ver ${{ env.RELEASE_DATE }}
+          tag_name: ${{ env.TAG_VERSION }}
+          name: Release ver ${{ env.RELEASE_DATE }}
           prerelease: ${{ github.event.inputs.is_prerelease }}
-          override: true
+          files: released-files/*

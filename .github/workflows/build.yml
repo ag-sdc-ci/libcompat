@@ -14,7 +14,7 @@ env:
 
 jobs:
   build:
-    runs-on: node
+    runs-on: ubuntu-latest
     container:
       image: ghcr.io/shadichy/cachyos-android-ci:latest
     strategy:
@@ -94,12 +94,12 @@ jobs:
 
   release:
     needs: build
-    runs-on: node
+    runs-on: ubuntu-latest
     steps:
       - name: Trigger Release Pipeline
         run: |
-          curl -X POST "${{ forgejo.server_url }}/api/v1/repos/${{ github.repository }}/actions/workflows/release.yml/dispatches" \
-            -H "Authorization: token ${{ github.token }}" \
+          curl -X POST "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yml/dispatches" \
+            -H "Authorization: Bearer ${{ github.token }}" \
             -H "Content-Type: application/json" \
             -d '{
               "ref": "master",
