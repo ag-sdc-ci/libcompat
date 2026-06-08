@@ -7,6 +7,7 @@ pkgver=1.0.0
 pkgrel=1
 arch=('x86_64')
 _x86_64_microarch_level="${LEVEL#v}"
+api_level=${API}
 depends=()
 provides=()
 makedepends=()
@@ -26,30 +27,16 @@ prepare() {
 		-DANDROID_ABI="x86_64" \
 		-DANDROID_PLATFORM="android-${API}" \
 		-DCMAKE_INSTALL_PREFIX="/apex/$org.$pkgname"
-	pwd
-	find
-	ls -a
-	echo "dbg: NDK=$NDK"
-	echo "dbg: API=$API"
-	echo "dbg: LEVEL=$LEVEL"
 }
 
 build() {
 	cd "$srcdir/libcompat"
-	pwd
-	find
-	ls -a
 	make -j"$(nproc)"
 }
 
 package_libcompat() {
 	cd "$srcdir/libcompat"
 	make DESTDIR=. install_lib
-	find
-	pwd
-	ls
-	ls apex
-	ls apex/$org.$pkgname
 	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
 }
 

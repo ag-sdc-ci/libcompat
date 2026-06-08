@@ -117,8 +117,6 @@ jobs:
 
           COMMON_FLAGS="-O2 -fPIC -DANDROID -D__ANDROID_API__=${API} -ffunction-sections -fdata-sections ${ARCH_FLAGS}"
 
-          echo "NDK=${NDK}" >> "$GITHUB_ENV"
-          echo "API=${API}" >> "$GITHUB_ENV"
           echo "CC=${TOOLCHAIN}/bin/${TARGET}${API}-clang" >> "$GITHUB_ENV"
           echo "CXX=${TOOLCHAIN}/bin/${TARGET}${API}-clang++" >> "$GITHUB_ENV"
           echo "AR=${TOOLCHAIN}/bin/llvm-ar" >> "$GITHUB_ENV"
