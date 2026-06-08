@@ -143,7 +143,7 @@ jobs:
         run: |
           sed -i "s/^pkgrel=.*/pkgrel=${{ needs.setup.outputs.revision }}/" APEXBUILD
 
-          export PATH=$PATH:$(pwd)/makeapex
+          export PATH=$PATH:$(pwd)/makeapex/src
           makeapex.sh
 
           # Rename output apex files to uniquely identify them for upload
