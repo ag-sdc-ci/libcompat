@@ -112,6 +112,8 @@ jobs:
 
       - name: Checkout platform
         uses: actions/checkout@v6
+        with:
+          path: src
 
       - name: Set up toolchain
         run: |
@@ -142,6 +144,7 @@ jobs:
 
       - name: Build APEX package
         run: |
+          mv src/APEXBUILD .
           sed -i "s/^pkgrel=.*/pkgrel=${{ needs.setup.outputs.revision }}/" APEXBUILD
 
           export PATH=$PATH:$(pwd)/makeapex/src
