@@ -136,6 +136,9 @@ jobs:
           chown -hR builder:builder .
           export PATH=$PATH:$(pwd)/makeapex/src
           export ANDROID_HOME=/opt/android-sdk
+          export API=${{ matrix.api-level }}
+          export NDK=${{ matrix.ndk }}
+          export LEVEL=${{ matrix.x86-64-level }}
           su -m builder -c makeapex.sh
 
           # Rename output apex files to uniquely identify them for upload
