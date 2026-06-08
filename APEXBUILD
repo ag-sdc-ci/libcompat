@@ -1,38 +1,46 @@
+# shellcheck shell=bash disable=2034,2154,2164
+# NDK, API and LEVEL are provided by the enviroment
+
 org="org.blisslabs.ag"
 pkgname="libcompat"
-pkgver=master
+pkgver=1.0.0
 pkgrel=1
 arch=('x86_64')
 _x86_64_microarch_level="${LEVEL#v}"
 depends=()
 provides=()
 makedepends=()
-split_packages=("${pkgname}" "${pkgname}_headers")
+split_packages=("${pkgname}" "${pkgname}-headers")
 
 source=()
 md5sums=()
 
+pkgver() {
+	cat "$srcdir/VERSION"
+}
+
+prepare() {
+	cd "$srcdir"
+	cmake \
+		-DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
+		-DANDROID_ABI="x86_64" \
+		-DANDROID_PLATFORM="android-${API}" \
+		-DCMAKE_INSTALL_PREFIX="/apex/$org.$pkgname"
+}
+
 build() {
-    mkdir -p "$startdir/build"
-    cd "$startdir/build"
-    cmake "$startdir" \
-        -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/android.toolchain.cmake \
-        -DANDROID_ABI=x86_64 \
-        -DANDROID_PLATFORM=android-${API} \
-        -DCMAKE_INSTALL_PREFIX=/apex/org.blisslabs.ag.libcompat
-    make -j$(nproc)
+	cd "$srcdir"
+	make -j"$(nproc)"
 }
 
 package_libcompat() {
-    cd "$startdir/build"
-    make install DESTDIR="$startdir/build/output"
-    install -d "$pkgdir"
-    cp -a "$startdir/build/output/apex/org.blisslabs.ag.libcompat"/. "$pkgdir/"
-    rm -rf "$pkgdir/include" 2>/dev/null || true
+	cd "$srcdir"
+	make DESTDIR=. install_lib
+	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
 }
 
-package_libcompat_headers() {
-    cd "$startdir/build"
-    install -d "$pkgdir"
-    cp -a "$startdir/build/output/apex/org.blisslabs.ag.libcompat/include" "$pkgdir/"
+package_libcompat-headers() {
+	cd "$srcdir"
+	make DESTDIR=. install_headers
+	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
 }

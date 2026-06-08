@@ -3,18 +3,74 @@ on:
   push:
     branches: ["*"]
   pull_request:
-    branches: ["devel", "master", "github"]
+    branches: ["*"]
   workflow_dispatch:
-    inputs:
-      is_prerelease:
-        description: "if is prerelease"
-        required: false
-        type: boolean
-        default: false
 
 jobs:
-  build_apex:
+  setup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.setenv.outputs.version }}
+      revision: ${{ steps.setenv.outputs.revision }}
+
+    steps:
+      - name: Set up environment
+        id: setenv
+        run: |
+          VERSION=$(cat VERSION)
+
+          version_cmp() {
+            local a=${1#v} b=${2#v}
+            a=${a%-*}.
+            b=${b%-*}.
+            while [ "$a" ] && [ "$b" ]; do
+              [[ ${a%%.*} -gt ${b%%.*} ]] && return 0
+              a=${a#*.}
+              b=${b#*.}
+            done
+            return 1
+          }
+
+          set_version() {
+            LATEST_TAG=$(curl -s "https://api.github.com/repos/${{ github.repository }}/tags?per_page=1" | jq -r '.[0].name')
+            if [ "$LATEST_TAG" = "null" ] || [ "$LATEST_TAG" = "" ]; then
+              export REVISION=1
+              return
+            fi
+
+            if version_cmp $VERSION $LATEST_TAG; then
+              export REVISION=1
+              return
+            fi
+
+            TAG_REV=${LATEST_TAG#*-}
+            if [ ! "$TAG_REV" ]; then
+              export REVISION=1
+              return
+            fi
+            
+            export REVISION=$((TAG_REV + 1))
+          }
+
+          set_version
+
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "REVISION=$REVISION" >> "$GITHUB_ENV"
+          
+          # Export to job output
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+    
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.setup.outputs.version }}
+      revision: ${{ needs.setup.outputs.revision }}
+    permissions:
+      contents: read
     container:
       image: ghcr.io/shadichy/cachyos-android-ci:latest
     strategy:
@@ -36,24 +92,24 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          repository: Android-Generic/external_libcompat
+          repository: ag-sdc/libcompat
           ref: ${{ github.ref_name }}
           token: ${{ github.token }}
           path: .
           persist-credentials: false
 
       - name: Checkout makeapex
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          repository: Android-Generic/makeapex
+          repository: ag-sdc/makeapex
           ref: master
           token: ${{ github.token }}
           path: makeapex
           persist-credentials: false
 
-      - name: Set up environment and toolchain
+      - name: Set up toolchain
         run: |
           export TOOLCHAIN="${{ matrix.ndk }}/toolchains/llvm/prebuilt/linux-x86_64"
           export API=${{ matrix.api-level }}
@@ -80,24 +136,19 @@ jobs:
           echo "CXXFLAGS=${COMMON_FLAGS}" >> "$GITHUB_ENV"
           echo "LDFLAGS=-Wl,--gc-sections" >> "$GITHUB_ENV"
 
-          # Compute sequence index for release
-          EXISTING_COUNT=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases" \
-            | jq -r 'if type=="array" then length else 0 end')
-          echo "RELEASE_INDEX=$((EXISTING_COUNT + 1))" >> "$GITHUB_ENV"
-
       - name: Build APEX package
         run: |
-          CLEAN_VER=$(cat VERSION 2>/dev/null || echo "1.0.0")
-          sed -i "s/^pkgver=.*/pkgver=${CLEAN_VER}/" APEXBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=${RELEASE_INDEX}/" APEXBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=${{ needs.setup.outputs.revision }}/" APEXBUILD
 
           export PATH=$PATH:$(pwd)/makeapex
           makeapex.sh
 
           # Rename output apex files to uniquely identify them for upload
+          GITHUB_REPOSITORY="${{ github.repository }}"
           for apex in *.apex; do
-            mv "$apex" "${apex%.apex}-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.apex"
+            basename=${GITHUB_REPOSITORY#*/}
+            case "$apex" in *-headers-*.apex) basename=$basename-headers ;; esac
+            mv "$apex" "${basename}-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.apex"
           done
 
       - name: Upload artifacts
@@ -108,23 +159,15 @@ jobs:
           archive: false
 
   release:
-    needs: build_apex
+    needs: build
     if: >
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/devel' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    steps:
-      - name: Checkout repository to read VERSION
-        uses: actions/checkout@v4
-        with:
-          repository: Android-Generic/external_libcompat
-          ref: ${{ github.ref_name }}
-          token: ${{ github.token }}
-          path: .
-          persist-credentials: false
 
+    steps:
       - name: Fetch APEX Artifacts
         uses: actions/download-artifact@v7
         with:
@@ -137,30 +180,26 @@ jobs:
           rm -rf tmp_artifacts
 
       - name: Calculate release metadata
+        id: setmeta
         run: |
-          BASE_TAG=$(cat VERSION 2>/dev/null || echo "1.0.0")
-          EXISTING_COUNT=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases" \
-            | jq -r 'if type=="array" then length else 0 end')
-          RELEASE_INDEX=$((EXISTING_COUNT + 1))
-
+          TAG=${{ needs.build.outputs.version }}-${{ needs.build.outputs.revision }}
           IS_PRERELEASE=false
           if [ '${{ github.event.inputs.is_prerelease }}' = 'true' ] || \
              [ '${{ github.ref }}' = 'refs/heads/dev' ] || \
              [ '${{ github.ref }}' = 'refs/heads/devel' ] || \
              [ '${{ github.ref }}' = 'refs/heads/develop' ]; then
             IS_PRERELEASE=true
-            BASE_TAG=${BASE_TAG}-dev
+            TAG=${TAG}-dev
           fi
 
-          echo "RELEASE_DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
-          echo "TAG_VERSION=${BASE_TAG}-${RELEASE_INDEX}" >> "$GITHUB_ENV"
-          echo "IS_PRERELEASE=${IS_PRERELEASE}" >> "$GITHUB_ENV"
+          echo "release_date=$(date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
 
       - name: Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ env.TAG_VERSION }}
-          name: Release ver ${{ env.RELEASE_DATE }}
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          tag_name: ${{ steps.setmeta.outputs.tag }}
+          name: Release ver ${{ steps.setmeta.outputs.tag }} at ${{ steps.setmeta.outputs.release_date }}
+          prerelease: ${{ steps.setmeta.outputs.is_prerelease }}
           files: released-files/*
