@@ -161,7 +161,6 @@ jobs:
         with:
           name: libcompat-apex-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}
           path: ./*.apex
-          archive: false
 
   release:
     needs: build
