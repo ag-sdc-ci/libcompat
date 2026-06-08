@@ -2,7 +2,8 @@
 # NDK, API and LEVEL are provided by the enviroment
 
 org="org.blisslabs.ag"
-pkgname="libcompat"
+pkgbase="libcompat"
+pkgname=("${pkgbase}" "${pkgbase}-dev")
 pkgver=1.0.0
 pkgrel=1
 arch=('x86_64')
@@ -11,7 +12,6 @@ api_level=${API}
 depends=()
 provides=()
 makedepends=()
-split_packages=("${pkgname}" "${pkgname}-dev")
 
 source=("libcompat::git+https://github.com/ag-sdc/libcompat")
 md5sums=('SKIP')
@@ -26,7 +26,7 @@ prepare() {
 		-DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
 		-DANDROID_ABI="x86_64" \
 		-DANDROID_PLATFORM="android-${API}" \
-		-DCMAKE_INSTALL_PREFIX="/apex/$org.$pkgname"
+		-DCMAKE_INSTALL_PREFIX="/apex/$org.$pkgbase"
 }
 
 build() {
@@ -37,11 +37,11 @@ build() {
 package_libcompat() {
 	cd "$srcdir/libcompat"
 	make DESTDIR=. install_lib
-	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
+	cp -a "apex/$org.$pkgbase"/. "$pkgdir/"
 }
 
 package_libcompat-dev() {
 	cd "$srcdir/libcompat"
-	make DESTDIR=. install_headers
-	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
+	make DESTDIR=. install_dev
+	cp -a "apex/$org.$pkgbase"/. "$pkgdir/"
 }
