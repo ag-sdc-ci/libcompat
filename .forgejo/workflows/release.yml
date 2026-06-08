@@ -1,0 +1,138 @@
+name: Release Pipeline
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Run ID of the source build workflow"
+        required: true
+        type: string
+      version_tag:
+        description: "Base version tag prefix (e.g., v1.2.0)"
+        required: true
+        type: string
+      is_prerelease:
+        description: "if is prerelease"
+        required: true
+        type: string
+
+jobs:
+  setup:
+    runs-on: node
+    steps:
+      - name: Calculate Release Sequence Count
+        id: counter
+        run: |
+          BASE_TAG="${{ github.event.inputs.version_tag }}"
+          EXISTING_COUNT=$(curl -s -H "Authorization: token ${{ github.token }}" \
+            "${{ forgejo.server_url }}/api/v1/repos/${{ github.repository }}/releases" \
+            | jq --arg prefix "$BASE_TAG" '[.[] | select(.tag_name | startswith($prefix))] | length')
+
+          RELEASE_INDEX=$((EXISTING_COUNT + 1))
+          VERSION_STRING="${BASE_TAG}-${RELEASE_INDEX}"
+
+          echo "RELEASE_VERSION=$VERSION_STRING" >> $GITHUB_ENV
+          echo "RELEASE_INDEX=$RELEASE_INDEX" >> $GITHUB_ENV
+          if [ '${{ github.event.inputs.is_prerelease }}' != false ]; then
+            BASE_TAG=${BASE_TAG}-dev
+          fi
+          echo "TAG_VERSION=$BASE_TAG" >> $GITHUB_ENV
+          echo "Calculated Version: $VERSION_STRING"
+
+  build_apex:
+    runs-on: node
+    container:
+      image: ghcr.io/shadichy/cachyos-android-ci:latest
+    strategy:
+      fail-fast: true
+      matrix:
+        api-level: [32, 33, 34, 35]
+        ndk: [/opt/android-ndk]
+        x86-64-level: [v2, v3, v4]
+        include:
+          - api-level: 36
+            ndk: /opt/android-ndk-beta
+            x86-64-level: v2
+          - api-level: 36
+            ndk: /opt/android-ndk-beta
+            x86-64-level: v3
+          - api-level: 36
+            ndk: /opt/android-ndk-beta
+            x86-64-level: v4
+
+    steps:
+      - name: Checkout platform
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.ref_name }}
+          token: ${{ github.token }}
+          path: .
+          persist-credentials: false
+
+      - name: Checkout makeapex
+        uses: actions/checkout@v4
+        with:
+          repository: Android-Generic/makeapex
+          ref: master
+          token: ${{ github.token }}
+          path: makeapex
+          persist-credentials: false
+
+      - name: Fetch Remote Build Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: libcompat-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz
+          run-id: ${{ github.event.inputs.source_run_id }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Build apex package
+        run: |
+          CLEAN_VER=$(echo "${TAG_VERSION}" | tr -- \'-/ :\' \'_\')
+          sed -i "s/^pkgver=.*/pkgver=${CLEAN_VER}/" APEXBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=${RELEASE_INDEX}/" APEXBUILD
+          export PATH=$PATH:$(pwd)/makeapex
+          makeapex.sh
+
+          # Rename output apex files to uniquely identify them for upload
+          for apex in *.apex; do
+            mv "$apex" "${apex%.apex}-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.apex"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: libcompat-apex-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz
+          path: ./*.apex
+          archive: false
+
+  release:
+    needs: build_apex
+    runs-on: node
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch Remote Build Artifact
+        uses: actions/download-artifact@v3
+        with:
+          path: ./tmp_artifacts/
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p released-files
+          find tmp_artifacts -type f -name "*.apex" -exec cp -t released-files {} +
+          rm -rf tmp_artifacts
+
+      - name: Set release metadata
+        run: |
+          echo "RELEASE_DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
+
+      - name: Release
+        uses: actions/forgejo-release@v2.11.1
+        with:
+          direction: upload
+          release-dir: released-files
+          tag: ${{ env.TAG_VERSION }}
+          title: Release ver ${{ env.RELEASE_DATE }}
+          prerelease: ${{ github.event.inputs.is_prerelease }}
+          override: true

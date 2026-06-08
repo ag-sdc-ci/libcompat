@@ -74,7 +74,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=${{ matrix.ndk }}/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=x86_64 \
             -DANDROID_PLATFORM=android-${{ matrix.api-level }} \
-            -DCMAKE_INSTALL_PREFIX=/vendor
+            -DCMAKE_INSTALL_PREFIX=/apex/org.blisslabs.ag.libcompat
           make -j$(nproc)
 
       - name: Install & package artifacts
@@ -82,7 +82,7 @@ jobs:
           cd build
           DESTDIR="$(pwd)/output" make install
           TARBALL="libcompat-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz"
-          tar -cf - -C output/vendor . | pigz -9 > "../${TARBALL}"
+          tar -cf - -C output/apex/org.blisslabs.ag.libcompat . | pigz -9 > "../${TARBALL}"
           echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
 
       - name: Upload artifacts
@@ -90,41 +90,22 @@ jobs:
         with:
           name: ${{ env.TARBALL }}
           path: ${{ env.TARBALL }}
+          archive: false
 
   release:
     needs: build
     runs-on: node
-    permissions:
-      contents: write
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v3
-        with:
-          path: tmp_artifacts
-
-      - name: Flatten artifacts
+      - name: Trigger Release Pipeline
         run: |
-          mkdir -p dist/release
-          find tmp_artifacts -type f -exec cp -t dist/release {} +
-          rm -rf tmp_artifacts
-
-      - name: Set release metadata
-        run: |
-          echo "RELEASE_DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
-          if [ "${{ github.ref_name }}" != "master" ]; then
-            echo "PRERELEASE=true" >> "$GITHUB_ENV"
-          else
-            echo "PRERELEASE=false" >> "$GITHUB_ENV"
-          fi
-          echo "RELEASE_NOTES=Built from android-generic/external_libcompat at main" >> "$GITHUB_ENV"
-
-      - name: Release
-        uses: actions/forgejo-release@v2.11.1
-        with:
-          direction: upload
-          release-dir: dist/release
-          tag: ${{ env.RELEASE_DATE }}
-          title: ${{ env.RELEASE_DATE }}
-          prerelease: ${{ env.PRERELEASE }}
-          release-notes: ${{ env.RELEASE_NOTES }}
-          override: true
+          curl -X POST "${{ forgejo.server_url }}/api/v1/repos/${{ github.repository }}/actions/workflows/release.yml/dispatches" \
+            -H "Authorization: token ${{ github.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "ref": "master",
+              "inputs": {
+                "source_run_id": "${{ github.run_id }}",
+                "version_tag": "master",
+                "is_prerelease": "'$(if [ "${{ github.ref_name }}" = "devel" ]; then echo "true"; else echo "false"; fi)'"
+              }
+            }'

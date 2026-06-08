@@ -1,0 +1,24 @@
+org="org.blisslabs.ag"
+pkgname="libcompat"
+pkgver=master
+pkgrel=1
+arch=('x86_64')
+_x86_64_microarch_level="${LEVEL#v}"
+depends=()
+provides=()
+makedepends=()
+split_packages=("${pkgname}" "${pkgname}_headers")
+
+source=("libcompat-api${API}-x86_64-${LEVEL}.tar.gz")
+md5sums=('SKIP')
+
+package_libcompat() {
+    install -d "$pkgdir"
+    cp -a "$srcdir"/. "$pkgdir/"
+    rm -rf "$pkgdir/include" 2>/dev/null || true
+}
+
+package_libcompat_headers() {
+    install -d "$pkgdir"
+    cp -a "$srcdir/include" "$pkgdir/"
+}
