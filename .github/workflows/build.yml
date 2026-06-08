@@ -1,19 +1,19 @@
-name: Build libcompat
-
+name: Build and Release
 on:
   push:
     branches: ["*"]
   pull_request:
-    branches: ["devel"]
+    branches: ["devel", "master", "github"]
   workflow_dispatch:
-
-env:
-  TARGET: x86_64-linux-android
-  REPO_URL: http://10.249.0.1:3002/Android-Generic/external_libcompat
-  REPO_REF: master
+    inputs:
+      is_prerelease:
+        description: "if is prerelease"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
-  build:
+  build_apex:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/shadichy/cachyos-android-ci:latest
@@ -35,19 +35,30 @@ jobs:
             x86-64-level: v4
 
     steps:
-      - name: Clone repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           repository: Android-Generic/external_libcompat
-          ref: master
+          ref: ${{ github.ref_name }}
           token: ${{ github.token }}
           path: .
           persist-credentials: false
 
-      - name: Set up toolchain
+      - name: Checkout makeapex
+        uses: actions/checkout@v4
+        with:
+          repository: Android-Generic/makeapex
+          ref: master
+          token: ${{ github.token }}
+          path: makeapex
+          persist-credentials: false
+
+      - name: Set up environment and toolchain
         run: |
           export TOOLCHAIN="${{ matrix.ndk }}/toolchains/llvm/prebuilt/linux-x86_64"
           export API=${{ matrix.api-level }}
+          export NDK=${{ matrix.ndk }}
+          export TARGET=x86_64-linux-android
 
           case "${{ matrix.x86-64-level }}" in
             v2) ARCH_FLAGS="-march=x86-64-v2 -mtune=generic" ;;
@@ -57,8 +68,10 @@ jobs:
 
           COMMON_FLAGS="-O2 -fPIC -DANDROID -D__ANDROID_API__=${API} -ffunction-sections -fdata-sections ${ARCH_FLAGS}"
 
-          echo "CC=${TOOLCHAIN}/bin/${{ env.TARGET }}${API}-clang" >> "$GITHUB_ENV"
-          echo "CXX=${TOOLCHAIN}/bin/${{ env.TARGET }}${API}-clang++" >> "$GITHUB_ENV"
+          echo "NDK=${NDK}" >> "$GITHUB_ENV"
+          echo "API=${API}" >> "$GITHUB_ENV"
+          echo "CC=${TOOLCHAIN}/bin/${TARGET}${API}-clang" >> "$GITHUB_ENV"
+          echo "CXX=${TOOLCHAIN}/bin/${TARGET}${API}-clang++" >> "$GITHUB_ENV"
           echo "AR=${TOOLCHAIN}/bin/llvm-ar" >> "$GITHUB_ENV"
           echo "NM=${TOOLCHAIN}/bin/llvm-nm" >> "$GITHUB_ENV"
           echo "RANLIB=${TOOLCHAIN}/bin/llvm-ranlib" >> "$GITHUB_ENV"
@@ -67,45 +80,79 @@ jobs:
           echo "CXXFLAGS=${COMMON_FLAGS}" >> "$GITHUB_ENV"
           echo "LDFLAGS=-Wl,--gc-sections" >> "$GITHUB_ENV"
 
-      - name: Configure and Build
-        run: |
-          mkdir build && cd build
-          cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=${{ matrix.ndk }}/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=x86_64 \
-            -DANDROID_PLATFORM=android-${{ matrix.api-level }} \
-            -DCMAKE_INSTALL_PREFIX=/apex/org.blisslabs.ag.libcompat
-          make -j$(nproc)
+          # Compute sequence index for release
+          EXISTING_COUNT=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            | jq -r 'if type=="array" then length else 0 end')
+          echo "RELEASE_INDEX=$((EXISTING_COUNT + 1))" >> "$GITHUB_ENV"
 
-      - name: Install & package artifacts
+      - name: Build APEX package
         run: |
-          cd build
-          DESTDIR="$(pwd)/output" make install
-          TARBALL="libcompat-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz"
-          tar -cf - -C output/apex/org.blisslabs.ag.libcompat . | pigz -9 > "../${TARBALL}"
-          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+          CLEAN_VER=$(cat VERSION 2>/dev/null || echo "1.0.0")
+          sed -i "s/^pkgver=.*/pkgver=${CLEAN_VER}/" APEXBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=${RELEASE_INDEX}/" APEXBUILD
+
+          export PATH=$PATH:$(pwd)/makeapex
+          makeapex.sh
+
+          # Rename output apex files to uniquely identify them for upload
+          for apex in *.apex; do
+            mv "$apex" "${apex%.apex}-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.apex"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.TARBALL }}
-          path: ${{ env.TARBALL }}
+          name: libcompat-apex-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz
+          path: ./*.apex
           archive: false
 
   release:
-    needs: build
+    needs: build_apex
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Trigger Release Pipeline
+      - name: Checkout repository to read VERSION
+        uses: actions/checkout@v4
+        with:
+          repository: Android-Generic/external_libcompat
+          ref: ${{ github.ref_name }}
+          token: ${{ github.token }}
+          path: .
+          persist-credentials: false
+
+      - name: Fetch APEX Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./tmp_artifacts/
+
+      - name: Flatten artifacts
         run: |
-          curl -X POST "https://api.github.com/repos/${{ github.repository }}/actions/workflows/release.yml/dispatches" \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "ref": "master",
-              "inputs": {
-                "source_run_id": "${{ github.run_id }}",
-                "version_tag": "master",
-                "is_prerelease": "'$(if [ "${{ github.ref_name }}" = "devel" ]; then echo "true"; else echo "false"; fi)'"
-              }
-            }'
+          mkdir -p released-files
+          find tmp_artifacts -type f -name "*.apex" -exec cp -t released-files {} +
+          rm -rf tmp_artifacts
+
+      - name: Calculate release metadata
+        run: |
+          BASE_TAG=$(cat VERSION 2>/dev/null || echo "1.0.0")
+          EXISTING_COUNT=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            | jq -r 'if type=="array" then length else 0 end')
+          RELEASE_INDEX=$((EXISTING_COUNT + 1))
+
+          if [ '${{ github.event.inputs.is_prerelease }}' = 'true' ]; then
+            BASE_TAG=${BASE_TAG}-dev
+          fi
+
+          echo "RELEASE_DATE=$(date +%Y-%m-%d)" >> "$GITHUB_ENV"
+          echo "TAG_VERSION=${BASE_TAG}-${RELEASE_INDEX}" >> "$GITHUB_ENV"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_VERSION }}
+          name: Release ver ${{ env.RELEASE_DATE }}
+          prerelease: ${{ github.event.inputs.is_prerelease == 'true' }}
+          files: released-files/*

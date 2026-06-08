@@ -9,16 +9,30 @@ provides=()
 makedepends=()
 split_packages=("${pkgname}" "${pkgname}_headers")
 
-source=("libcompat-api${API}-x86_64-${LEVEL}.tar.gz")
-md5sums=('SKIP')
+source=()
+md5sums=()
+
+build() {
+    mkdir -p "$startdir/build"
+    cd "$startdir/build"
+    cmake "$startdir" \
+        -DCMAKE_TOOLCHAIN_FILE=${NDK}/build/cmake/android.toolchain.cmake \
+        -DANDROID_ABI=x86_64 \
+        -DANDROID_PLATFORM=android-${API} \
+        -DCMAKE_INSTALL_PREFIX=/apex/org.blisslabs.ag.libcompat
+    make -j$(nproc)
+}
 
 package_libcompat() {
+    cd "$startdir/build"
+    make install DESTDIR="$startdir/build/output"
     install -d "$pkgdir"
-    cp -a "$srcdir"/. "$pkgdir/"
+    cp -a "$startdir/build/output/apex/org.blisslabs.ag.libcompat"/. "$pkgdir/"
     rm -rf "$pkgdir/include" 2>/dev/null || true
 }
 
 package_libcompat_headers() {
+    cd "$startdir/build"
     install -d "$pkgdir"
-    cp -a "$srcdir/include" "$pkgdir/"
+    cp -a "$startdir/build/output/apex/org.blisslabs.ag.libcompat/include" "$pkgdir/"
 }
