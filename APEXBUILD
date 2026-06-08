@@ -39,6 +39,11 @@ build() {
 package_libcompat() {
 	cd "$srcdir/libcompat"
 	make DESTDIR=. install_lib
+	find
+	pwd
+	ls
+	ls apex
+	ls apex/$org.$pkgname
 	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
 }
 
