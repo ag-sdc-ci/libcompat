@@ -34,18 +34,16 @@ prepare() {
 build() {
 	cd "$srcdir/libcompat"
 	make -j"$(nproc)"
-	mkdir -p out
 }
 
 package_libcompat() {
 	cd "$srcdir/libcompat"
-	make DESTDIR=out install_lib
-	find .
-	cp -a "$srcdir/out/apex/$org.$pkgname"/. "$pkgdir/"
+	make DESTDIR=. install_lib
+	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
 }
 
 package_libcompat-headers() {
 	cd "$srcdir/libcompat"
-	make DESTDIR=out install_headers
-	cp -a "$srcdir/out/apex/$org.$pkgname"/. "$pkgdir/"
+	make DESTDIR=. install_headers
+	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
 }
