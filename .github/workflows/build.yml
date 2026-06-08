@@ -16,6 +16,15 @@ jobs:
       revision: ${{ steps.setenv.outputs.revision }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          repository: ag-sdc/libcompat
+          ref: ${{ github.ref_name }}
+          token: ${{ github.token }}
+          path: .
+          persist-credentials: false
+
       - name: Set up environment
         id: setenv
         run: |
