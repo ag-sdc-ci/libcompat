@@ -16,16 +16,11 @@ jobs:
       revision: ${{ steps.setenv.outputs.revision }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          repository: ag-sdc/libcompat
-          ref: main
-
       - name: Set up environment
         id: setenv
         run: |
-          VERSION=$(cat VERSION)
+          # libcompat provides a VERSION file for versioning
+          VERSION=$(curl -L https://github.com/ag-sdc/libcompat/raw/refs/heads/main/VERSION)
 
           version_cmp() {
             local a=${1#v} b=${2#v}
@@ -97,11 +92,8 @@ jobs:
             x86-64-level: v4
 
     steps:
-      - name: Checkout repository
+      - name: Checkout platform
         uses: actions/checkout@v6
-        with:
-          repository: ag-sdc/libcompat
-          ref: main
 
       - name: Checkout makeapex
         uses: actions/checkout@v6
@@ -109,11 +101,6 @@ jobs:
           repository: ag-sdc/makeapex
           ref: main
           path: makeapex
-
-      - name: Checkout platform
-        uses: actions/checkout@v6
-        with:
-          path: platform
 
       - name: Set up toolchain
         run: |
@@ -144,11 +131,11 @@ jobs:
 
       - name: Build APEX package
         run: |
-          mv platform/APEXBUILD .
           sed -i "s/^pkgrel=.*/pkgrel=${{ needs.setup.outputs.revision }}/" APEXBUILD
 
           chown -hR builder:builder .
           export PATH=$PATH:$(pwd)/makeapex/src
+          export ANDROID_HOME=/opt/android-sdk
           su -m builder -c makeapex.sh
 
           # Rename output apex files to uniquely identify them for upload

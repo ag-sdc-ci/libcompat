@@ -12,16 +12,15 @@ provides=()
 makedepends=()
 split_packages=("${pkgname}" "${pkgname}-headers")
 
-source=()
+source=("libcompat::git+https://github.com/ag-sdc/libcompat")
 md5sums=()
 
-# pkgver() {
-# 	cat "$srcdir/VERSION"
-# }
+pkgver() {
+	cat "$srcdir/libcompat/VERSION"
+}
 
 prepare() {
-	cd "$srcdir"
-	find
+	cd "$srcdir/libcompat"
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
 		-DANDROID_ABI="x86_64" \
@@ -30,18 +29,18 @@ prepare() {
 }
 
 build() {
-	cd "$srcdir"
+	cd "$srcdir/libcompat"
 	make -j"$(nproc)"
 }
 
 package_libcompat() {
-	cd "$srcdir"
+	cd "$srcdir/libcompat"
 	make DESTDIR=. install_lib
 	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
 }
 
 package_libcompat-headers() {
-	cd "$srcdir"
+	cd "$srcdir/libcompat"
 	make DESTDIR=. install_headers
 	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
 }
