@@ -79,7 +79,7 @@ jobs:
           persist-credentials: false
 
       - name: Fetch Remote Build Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: libcompat-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz
           run-id: ${{ github.event.inputs.source_run_id }}
@@ -100,7 +100,7 @@ jobs:
           done
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: libcompat-apex-api${{ matrix.api-level }}-x86_64-${{ matrix.x86-64-level }}.tar.gz
           path: ./*.apex
@@ -113,7 +113,7 @@ jobs:
       contents: write
     steps:
       - name: Fetch Remote Build Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ./tmp_artifacts/
 

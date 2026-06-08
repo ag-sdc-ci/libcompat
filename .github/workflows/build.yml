@@ -86,7 +86,7 @@ jobs:
           echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TARBALL }}
           path: ${{ env.TARBALL }}
