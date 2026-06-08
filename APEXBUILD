@@ -7,20 +7,21 @@ pkgver=1.0.0
 pkgrel=1
 arch=('x86_64')
 _x86_64_microarch_level="${LEVEL#v}"
+api_level=${API}
 depends=()
 provides=()
 makedepends=()
-split_packages=("${pkgname}" "${pkgname}-headers")
+split_packages=("${pkgname}" "${pkgname}-dev")
 
-source=()
-md5sums=()
+source=("libcompat::git+https://github.com/ag-sdc/libcompat")
+md5sums=('SKIP')
 
 pkgver() {
-	cat "$srcdir/VERSION"
+	cat "$srcdir/libcompat/VERSION"
 }
 
 prepare() {
-	cd "$srcdir"
+	cd "$srcdir/libcompat"
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE="${NDK}/build/cmake/android.toolchain.cmake" \
 		-DANDROID_ABI="x86_64" \
@@ -29,18 +30,18 @@ prepare() {
 }
 
 build() {
-	cd "$srcdir"
+	cd "$srcdir/libcompat"
 	make -j"$(nproc)"
 }
 
 package_libcompat() {
-	cd "$srcdir"
+	cd "$srcdir/libcompat"
 	make DESTDIR=. install_lib
-	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
+	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
 }
 
-package_libcompat-headers() {
-	cd "$srcdir"
+package_libcompat-dev() {
+	cd "$srcdir/libcompat"
 	make DESTDIR=. install_headers
-	cp -a "$srcdir/apex/$org.$pkgname"/. "$pkgdir/"
+	cp -a "apex/$org.$pkgname"/. "$pkgdir/"
 }
