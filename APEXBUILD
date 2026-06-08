@@ -13,7 +13,7 @@ makedepends=()
 split_packages=("${pkgname}" "${pkgname}-headers")
 
 source=("libcompat::git+https://github.com/ag-sdc/libcompat")
-md5sums=()
+md5sums=('SKIP')
 
 pkgver() {
 	cat "$srcdir/libcompat/VERSION"
