@@ -26,6 +26,9 @@ prepare() {
 		-DANDROID_ABI="x86_64" \
 		-DANDROID_PLATFORM="android-${API}" \
 		-DCMAKE_INSTALL_PREFIX="/apex/$org.$pkgname"
+	pwd
+	find
+	ls -a
 	echo "dbg: NDK=$NDK"
 	echo "dbg: API=$API"
 	echo "dbg: LEVEL=$LEVEL"
@@ -33,6 +36,9 @@ prepare() {
 
 build() {
 	cd "$srcdir/libcompat"
+	pwd
+	find
+	ls -a
 	make -j"$(nproc)"
 }
 
