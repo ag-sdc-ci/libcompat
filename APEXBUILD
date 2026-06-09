@@ -41,6 +41,7 @@ package_libcompat() {
 }
 
 package_libcompat-dev() {
+	depends+=("libcompat.so") # force -dev package to depend on original package
 	cd "$srcdir/libcompat"
 	make DESTDIR=. install_dev
 	cp -a "apex/$org.$pkgbase"/. "$pkgdir/"
